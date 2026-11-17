@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Last30 — AI Nightly Mentor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Newsreader"', 'Georgia', 'serif'],
+            sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+          },
+          colors: {
+            bgBase: '#191817',
+            bgCard: '#22211F',
+            bgHover: '#2A2825',
+            borderWarm: '#312F2C',
+            textPrimary: '#E2DDD5',
+            textSecondary: '#A8A196',
+            textMuted: '#767067',
+            accentSand: '#B08D74',
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    html, body {
+      background-color: #191817;
+      color: #E2DDD5;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+    .fade-step {
+      animation: fadeStep 0.24s ease-out forwards;
+    }
+    @keyframes fadeStep {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #191817;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #312F2C;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-bgBase text-textPrimary flex flex-col selection:bg-accentSand/25 selection:text-textPrimary">
+  <!-- Top Editorial Bar -->
+  <header class="w-full border-b border-borderWarm bg-bgBase/95 backdrop-blur-xs sticky top-0 z-30">
+    <div class="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+      <button type="button" onclick="Last30.goHome()"
+              class="flex items-center gap-2.5 text-left focus:outline-none group">
+        <span class="w-2 h-2 rounded-full bg-accentSand"></span>
+        <span class="font-serif text-lg tracking-tight text-textPrimary">Last30</span>
+        <span class="text-xs text-textMuted hidden sm:inline">Nightly AI Mentor</span>
+      </button>
+
+      <div id="header-actions" class="flex items-center gap-2"></div>
+    </div>
+  </header>
+
+  <!-- Centered Single-Focus Stage -->
+  <main class="flex-1 w-full max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col justify-center">
+    <div id="stage" class="w-full"></div>
+  </main>
+
+  <!-- Non-blocking Toast Message -->
+  <div id="toast"
+       class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-full bg-bgCard border border-borderWarm text-xs text-textPrimary shadow-xl">
+  </div>
+
+  <!-- 900-Minute Monthly Progress Ledger Modal -->
+  <div id="ledger-modal"
+       class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/75">
+    <div class="w-full max-w-lg rounded-2xl bg-bgCard border border-borderWarm p-6 shadow-2xl fade-step max-h-[88vh] overflow-y-auto">
+      <div class="flex items-center justify-between gap-3 mb-5">
+        <div>
+          <p class="text-[11px] uppercase tracking-wider text-accentSand">30-Day Compounding</p>
+          <h2 class="font-serif text-2xl text-textPrimary font-normal">900-Minute Ledger</h2>
+        </div>
+        <button type="button" onclick="Last30.closeLedger()"
+                class="px-3 py-1.5 rounded-xl bg-bgBase border border-borderWarm text-xs text-textSecondary hover:text-textPrimary">
+          Close
+        </button>
+      </div>
+      <div id="ledger-content" class="space-y-5"></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const PROFILE_KEY = 'last30_profile_v1';
+      const MEMORY_KEY = 'last30_memory_v1';
+      const MONTHLY_GOAL_MINUTES = 900;
+
+      const ENERGY_LEVELS = [
+        {
+          id: 'Fried',
+          label: 'Fried',
+          detail: 'Tired, just want to sleep'
+        },
+        {
+          id: 'Balanced',
+          label: 'Balanced',
+          detail: 'Steady baseline, easy to absorb'
+        },
+        {
+          id: 'Curious',
+          label: 'Curious',
+          detail: 'Open to deeper concepts'
+        }
+      ];
+
+      const FORMAT_CHOICES = [
+        {
+          id: 'Watch',
+          label: 'Watch',
+          detail: 'Video, Film, Podcast'
+        },
+        {
+          id: 'Listen',
+          label: 'Listen',
+          detail: 'Music, Ambient, Audio'
+        },
+        {
+          id: 'Read & Reflect',
+          label: 'Read & Reflect',
+          detail: 'Text, Brain Dump'
+        },
+        {
+          id: 'Learn',
+          label: 'Learn',
+          detail: 'Models, Puzzles, Micro-Skills'
+        }
+      ];
+
+      const PREDICTIVE_ANCHORS = [
+        { word: 'Drift', hint: 'Unforced flow' },
+        { word: 'Mechanism', hint: 'How things work' },
+        { word: 'Stillness', hint: 'Quiet space' },
+        { word: 'Signal', hint: 'Clear pattern' },
+        { word: 'Craft', hint: 'Tactile skill' },
+        { word: 'Clarity', hint: 'Settled framing' }
+      ];
+
+      const TOPIC_CHIPS = [
+        'Systems & design',
+        'Music & sound',
+        'Human history',
+        'Language & speech',
+        'Everyday science'
+      ];
+
+      const FEEL_OFF_REASONS = [
+        'Too heavy',
+        'Wrong format',
+        'Off tone',
+        'Too familiar'
+      ];
+
+      function safeReadJSON(key, fallback) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return fallback;
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === 'object' ? parsed : fallback;
+        } catch (err) {
+          return fallback;
+        }
+      }
+
+      function safeWriteJSON(key, value) {
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch (err) {
+          // Storage unavailable
+        }
+      }
+
+      function loadProfile() {
+        const p = safeReadJSON(PROFILE_KEY, null);
+        if (!p || !p.name || !p.email) return null;
+        return {
+          name: String(p.name).trim(),
+          email: String(p.email).trim(),
+          defaultEnergy: ENERGY_LEVELS.some(e => e.id === p.defaultEnergy) ? p.defaultEnergy : 'Balanced',
+          preferredFormats: Array.isArray(p.preferredFormats) && p.preferredFormats.length > 0
+            ? p.preferredFormats.filter(f => FORMAT_CHOICES.some(c => c.id === f))
+            : ['Watch', 'Listen'],
+          avoidNotes: typeof p.avoidNotes === 'string' ? p.avoidNotes : '',
+          onboarded: Boolean(p.onboarded),
+          updatedAt: p.updatedAt || new Date().toISOString()
+        };
+      }
+
+      function loadMemory() {
+        const m = safeReadJSON(MEMORY_KEY, null);
+        return {
+          completedMinutes: typeof m?.completedMinutes === 'number' ? Math.max(0, m.completedMinutes) : 0,
+          sessionsCompleted: typeof m?.sessionsCompleted === 'number' ? Math.max(0, m.sessionsCompleted) : 0,
+          history: Array.isArray(m?.history) ? m.history.slice(0, 30) : [],
+          feedbackSignals: Array.isArray(m?.feedbackSignals) ? m.feedbackSignals.slice(0, 25) : [],
+          recentTopics: Array.isArray(m?.recentTopics) ? m.recentTopics.slice(0, 10) : []
+        };
+      }
+
+      const initialProfile = loadProfile();
+      const initialMemory = loadMemory();
+
+      const state = {
+        profile: initialProfile,
+        memory: initialMemory,
+        // Screens:
+        // 'entry' -> Name + Email
+        // 'onboard_1' -> Default evening energy
+        // 'onboard_2' -> Preferred formats
+        // 'onboard_3' -> Anything to avoid (optional)
+        // 'checkin_1' -> Tonight's energy
+        // 'checkin_2' -> Tonight's format
+        // 'checkin_3' -> Optional specific topic / thing they care about
+        // 'checkin_4' -> Predictive single-word anchor
+        // 'synthesizing' -> AI generating single directive
+        // 'directive' -> Single directive card
+        // 'session' -> 30-minute countdown session
+        screen: initialProfile
+          ? (initialProfile.onboarded ? 'checkin_1' : 'onboard_1')
+          : 'entry',
+        draftName: initialProfile ? initialProfile.name : '',
+        draftEmail: initialProfile ? initialProfile.email : '',
+        draftEnergy: initialProfile ? initialProfile.defaultEnergy : 'Balanced',
+        draftFormats: initialProfile ? [...initialProfile.preferredFormats] : ['Watch', 'Listen'],
+        draftAvoid: initialProfile ? initialProfile.avoidNotes : '',
+
+        // Nightly check-in answers
+        tonightEnergy: initialProfile ? initialProfile.defaultEnergy : 'Balanced',
+        tonightFormat: null,
+        tonightTopic: '',
+        tonightAnchor: null,
+
+        // Directive & feedback state
+        directive: null,
+        rerollsRemaining: 1,
+        excludedTitles: [],
+        feelOffOpen: false,
+        brainDumpText: '',
+        puzzleRevealed: false,
+
+        // Timer state
+        secondsLeft: 30 * 60,
+        timerRunning: false
+      };
+
+      let countdownInterval = null;
+
+      function escapeHtml(str) {
+        return String(str == null ? '' : str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function showToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.remove('hidden');
+        clearTimeout(showToast._timer);
+        showToast._timer = setTimeout(() => {
+          el.classList.add('hidden');
+        }, 2500);
+      }
+
+      function persistProfile() {
+        if (!state.profile) return;
+        state.profile.updatedAt = new Date().toISOString();
+        safeWriteJSON(PROFILE_KEY, state.profile);
+      }
+
+      function persistMemory() {
+        safeWriteJSON(MEMORY_KEY, state.memory);
+      }
+
+      // STRICT LINK RULE: Build verified destination URLs exclusively from searchQuery
+      function buildSafeLaunchUrl(platform, searchQuery) {
+        const q = encodeURIComponent(String(searchQuery || '').trim() || 'calm evening documentary');
+        const plat = String(platform || '').toLowerCase();
+        if (plat.includes('spotify') || plat.includes('music') || plat.includes('audio')) {
+          return `https://open.spotify.com/search/${q}`;
+        }
+        if (plat.includes('podcast') || plat.includes('youtube') || plat.includes('video') || plat.includes('film')) {
+          return `https://www.youtube.com/results?search_query=${q}`;
+        }
+        return `https://www.google.com/search?q=${q}`;
+      }
+
+      // Rich adaptive local AI synthesizer fallback (never dead links, never repetitive)
+      function synthesizeLocalMentorDirective(rejectionContext) {
+        const prof = state.profile;
+        const mem = state.memory;
+        const firstName = prof.name.split(/\s+/)[0];
+        const energy = state.tonightEnergy || prof.defaultEnergy;
+        const fmt = state.tonightFormat || 'Watch';
+        const anchor = state.tonightAnchor || 'Stillness';
+        const topic = (state.tonightTopic || '').trim();
+        const avoid = (prof.avoidNotes || '').trim();
+
+        const recentFeedback = mem.feedbackSignals
+          .slice(-3)
+          .map(f => f.reason)
+          .filter(Boolean);
+
+        const noteParts = [];
+        noteParts.push(
+          `${firstName}, you came in ${energy.toLowerCase()} and anchored on "${anchor}".`
+        );
+        if (topic) {
+          noteParts.push(
+            `I kept "${topic}" in view so it feels relevant without asking you to work.`
+          );
+        } else {
+          noteParts.push(
+            `I picked a self-contained 30-minute lane so you do not have to browse or choose next.`
+          );
+        }
+        if (avoid) {
+          noteParts.push(`Steered clear of ${avoid}.`);
+        }
+        if (rejectionContext) {
+          noteParts.push(`Adjusted after "${rejectionContext}".`);
+        } else if (recentFeedback.length > 0) {
+          noteParts.push(`Calibrated with your recent pacing notes in mind.`);
+        }
+
+        const baseTags = [anchor, energy, fmt];
+        if (topic) baseTags.push(topic.slice(0, 24));
+
+        if (fmt === 'Read & Reflect') {
+          const isUnload = energy === 'Fried' || anchor === 'Stillness' || anchor === 'Clarity';
+          if (isUnload && !topic) {
+            return {
+              title: `Evening Offload — ${anchor}`,
+              creatorOrSource: 'Last30 Quiet Note',
+              formatBadge: 'Brain Dump',
+              duration: '25 mins',
+              mentorNote: noteParts.join(' '),
+              latentTags: [...baseTags, 'Zero Feed'],
+              launchPlatform: 'Built-in Note',
+              searchQuery: '',
+              interactiveMode: 'brain_dump',
+              interactivePrompts: [
+                'What is still sitting open from today?',
+                'What are 2 or 3 small things worth handling tomorrow?',
+                'What can stay parked until tomorrow night?'
+              ],
+              puzzlePrompt: '',
+              puzzleSolution: ''
+            };
+          }
+          const q = topic ? `${topic} short essay` : 'The Tyranny of the Urgent Charles Hummel essay';
+          return {
+            title: topic ? `Short Reading on ${topic}` : 'The Tyranny of the Urgent',
+            creatorOrSource: topic ? 'Curated Reading' : 'Charles Hummel',
+            formatBadge: 'Short Text',
+            duration: '20 mins',
+            mentorNote: noteParts.join(' '),
+            latentTags: [...baseTags, 'Low Glare'],
+            launchPlatform: 'Web Reader',
+            searchQuery: q,
+            interactiveMode: 'standard',
+            interactivePrompts: [],
+            puzzlePrompt: '',
+            puzzleSolution: ''
+          };
+        }
+
+        if (fmt === 'Learn' && (energy === 'Curious' || anchor === 'Mechanism' || anchor === 'Signal')) {
+          return {
+            title: topic ? `One Mechanism in ${topic}` : 'Second-Order Effects: The Cobra Effect',
+            creatorOrSource: topic ? `${topic} • Mental Model` : 'Mental Model',
+            formatBadge: 'Interactive Model',
+            duration: '20 mins',
+            mentorNote: noteParts.join(' '),
+            latentTags: [...baseTags, 'One Concept'],
+            launchPlatform: 'Built-in Card',
+            searchQuery: '',
+            interactiveMode: 'puzzle',
+            interactivePrompts: [],
+            puzzlePrompt: topic
+              ? `Think of one rule or metric in ${topic} meant to fix a problem. What side effect might appear if people optimize strictly for that metric?`
+              : 'A city pays a small reward for every rat tail turned in. Sightings drop for two weeks, then double. What happened?',
+            puzzleSolution: topic
+              ? `Goodhart's law: once a measure becomes a target, behavior bends around the metric rather than the underlying health of ${topic}.`
+              : 'People began breeding rats for the payout and released them when the program ended—a classic second-order incentive loop.'
+          };
+        }
+
+        if (fmt === 'Listen') {
+          const q = topic
+            ? `${topic} calm ambient instrumental`
+            : anchor === 'Mechanism' || anchor === 'Signal'
+              ? 'Brian Eno Music for Airports'
+              : 'Nils Frahm ambient piano';
+          return {
+            title: topic ? `${topic} — Unhurried Audio` : 'Music for Airports (1/1)',
+            creatorOrSource: topic ? 'Curated Sound' : 'Brian Eno',
+            formatBadge: energy === 'Fried' ? 'Low-Stim Audio' : 'Listening Pick',
+            duration: '28 mins',
+            mentorNote: noteParts.join(' '),
+            latentTags: [...baseTags, 'Eyes-Closed Ready'],
+            launchPlatform: 'YouTube',
+            searchQuery: q,
+            interactiveMode: 'standard',
+            interactivePrompts: [],
+            puzzlePrompt: '',
+            puzzleSolution: ''
+          };
+        }
+
+        if (fmt === 'Learn') {
+          const q = topic
+            ? `${topic} fundamentals explainer`
+            : 'How Polynesian Navigators Read Ocean Swells';
+          return {
+            title: topic ? `Foundations: ${topic}` : 'How Polynesian Navigators Read Ocean Swells',
+            creatorOrSource: topic ? 'Core Explainer' : 'Visual Breakdown',
+            formatBadge: 'Micro-Lesson',
+            duration: '25 mins',
+            mentorNote: noteParts.join(' '),
+            latentTags: [...baseTags, 'Self-Paced'],
+            launchPlatform: 'YouTube',
+            searchQuery: q,
+            interactiveMode: 'standard',
+            interactivePrompts: [],
+            puzzlePrompt: '',
+            puzzleSolution: ''
+          };
+        }
+
+        // Default: Watch
+        const q = topic
+          ? `${topic} calm documentary essay`
+          : energy === 'Fried'
+            ? 'How Container Ships Work slow documentary'
+            : 'Inside the Mind of Master Watchmakers documentary';
+        return {
+          title: topic ? `${topic} — Calm Visual Study` : 'How Container Ships Actually Work',
+          creatorOrSource: topic ? 'Curated Essay' : 'Wendover Productions',
+          formatBadge: energy === 'Fried' ? 'Slow-Paced Watch' : 'Single Pick',
+          duration: '25 mins',
+          mentorNote: noteParts.join(' '),
+          latentTags: [...baseTags, 'Single Directive'],
+          launchPlatform: 'YouTube',
+          searchQuery: q,
+          interactiveMode: 'standard',
+          interactivePrompts: [],
+          puzzlePrompt: '',
+          puzzleSolution: ''
+        };
+      }
+
+      // Live Structured Gemini AI Mentor Engine (with safe searchQuery contract & fallback)
+      async function generateMentorDirective(rejectionContext = null) {
+        const prof = state.profile;
+        const mem = state.memory;
+        const apiKey = '';
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const systemInstruction = [
+          'You are Last30, a calm, grounded AI Nightly Mentor.',
+          'Return strictly ONE single directive for the user’s final 30 minutes before sleep.',
+          'Never output lists, feeds, multiple recommendations, or hype.',
+          'STRICT LINK RULE: Never output or invent youtube.com/watch?v=, youtu.be/, open.spotify.com/track/, or any specific media IDs/URLs.',
+          'Instead provide a clean, descriptive searchQuery string that can be safely searched on YouTube or web.',
+          'Keep mentorNote warm, non-cringe, and concise (2 short sentences max).'
+        ].join(' ');
+
+        const userPrompt = [
+          `User profile: ${prof.name} (${prof.email})`,
+          `Default evening energy: ${prof.defaultEnergy}`,
+          `Preferred formats: ${prof.preferredFormats.join(', ')}`,
+          `Things to avoid: ${prof.avoidNotes || 'None specified'}`,
+          `Monthly progress: ${mem.completedMinutes}/${MONTHLY_GOAL_MINUTES} minutes across ${mem.sessionsCompleted} nights`,
+          `Recent completed titles: ${mem.history.slice(0, 5).map(h => h.title).join('; ') || 'None'}`,
+          `Recent feedback signals: ${mem.feedbackSignals.slice(-5).map(f => `${f.title || 'Pick'} -> ${f.reason}`).join('; ') || 'None'}`,
+          '',
+          `Tonight's check-in:`,
+          `- Energy right now: ${state.tonightEnergy}`,
+          `- Format chosen: ${state.tonightFormat}`,
+          `- Specific topic / thing they care about (optional): ${state.tonightTopic || 'None'}`,
+          `- Predictive single-word anchor: ${state.tonightAnchor}`,
+          rejectionContext ? `- Immediate replacement reason: ${rejectionContext}` : '',
+          state.excludedTitles.length > 0
+            ? `- Do NOT repeat these titles from this session: ${state.excludedTitles.join(', ')}`
+            : ''
+        ].filter(Boolean).join('\n');
+
+        const payload = {
+          contents: [{ parts: [{ text: userPrompt }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                title: { type: 'STRING' },
+                creatorOrSource: { type: 'STRING' },
+                formatBadge: { type: 'STRING' },
+                duration: { type: 'STRING' },
+                mentorNote: { type: 'STRING' },
+                latentTags: { type: 'ARRAY', items: { type: 'STRING' } },
+                launchPlatform: { type: 'STRING' },
+                searchQuery: { type: 'STRING' },
+                interactiveMode: {
+                  type: 'STRING',
+                  enum: ['standard', 'brain_dump', 'puzzle']
+                },
+                interactivePrompts: { type: 'ARRAY', items: { type: 'STRING' } },
+                puzzlePrompt: { type: 'STRING' },
+                puzzleSolution: { type: 'STRING' }
+              },
+              required: [
+                'title',
+                'creatorOrSource',
+                'formatBadge',
+                'duration',
+                'mentorNote',
+                'latentTags',
+                'launchPlatform',
+                'searchQuery',
+                'interactiveMode'
+              ]
+            }
+          }
+        };
+
+        const retryDelays = [800, 1600];
+        for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const json = await res.json();
+            const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!rawText) throw new Error('Empty model response');
+            const parsed = JSON.parse(rawText);
+            if (!parsed || !parsed.title || !parsed.mentorNote) {
+              throw new Error('Malformed directive');
+            }
+
+            // Sanitize searchQuery so no raw watch?v= ID ever slips through
+            const cleanQuery = String(parsed.searchQuery || `${parsed.title} ${parsed.creatorOrSource}`)
+              .replace(/https?:\/\/\S+/gi, '')
+              .replace(/watch\?v=\S+/gi, '')
+              .trim();
+
+            return {
+              title: String(parsed.title).trim(),
+              creatorOrSource: String(parsed.creatorOrSource || 'Curated').trim(),
+              formatBadge: String(parsed.formatBadge || state.tonightFormat).trim(),
+              duration: String(parsed.duration || '25 mins').trim(),
+              mentorNote: String(parsed.mentorNote).trim(),
+              latentTags: Array.isArray(parsed.latentTags) && parsed.latentTags.length
+                ? parsed.latentTags.slice(0, 4).map(t => String(t).trim())
+                : [state.tonightAnchor, state.tonightEnergy],
+              launchPlatform: String(parsed.launchPlatform || 'YouTube').trim(),
+              searchQuery: cleanQuery,
+              interactiveMode: ['standard', 'brain_dump', 'puzzle'].includes(parsed.interactiveMode)
+                ? parsed.interactiveMode
+                : 'standard',
+              interactivePrompts: Array.isArray(parsed.interactivePrompts)
+                ? parsed.interactivePrompts.slice(0, 4).map(p => String(p))
+                : [],
+              puzzlePrompt: String(parsed.puzzlePrompt || ''),
+              puzzleSolution: String(parsed.puzzleSolution || '')
+            };
+          } catch (err) {
+            if (attempt === retryDelays.length) {
+              return synthesizeLocalMentorDirective(rejectionContext);
+            }
+            await new Promise(r => setTimeout(r, retryDelays[attempt]));
+          }
+        }
+        return synthesizeLocalMentorDirective(rejectionContext);
+      }
+
+      function renderHeader() {
+        const container = document.getElementById('header-actions');
+        if (!container) return;
+        if (!state.profile) {
+          container.innerHTML = `<span class="text-xs text-textMuted">Local profile</span>`;
+          return;
+        }
+        const mins = state.memory.completedMinutes;
+        const pct = Math.min(100, Math.round((mins / MONTHLY_GOAL_MINUTES) * 100));
+        container.innerHTML = `
+          <span class="text-xs text-textSecondary hidden sm:inline">${escapeHtml(state.profile.name.split(/\s+/)[0])}</span>
+          <button type="button" onclick="Last30.openLedger()"
+                  class="px-3 py-1.5 rounded-xl bg-bgCard border border-borderWarm hover:border-accentSand/60 text-xs text-textPrimary flex items-center gap-1.5 transition-colors">
+            <span class="text-accentSand font-medium">${mins}m</span>
+            <span class="text-textMuted">/ 900m (${pct}%)</span>
+          </button>
+          <button type="button" onclick="Last30.editProfile()"
+                  class="px-2.5 py-1.5 rounded-xl bg-bgCard border border-borderWarm hover:border-accentSand/60 text-xs text-textSecondary hover:text-textPrimary transition-colors">
+            Profile
+          </button>
+        `;
+      }
+
+      function renderStage() {
+        renderHeader();
+        const stage = document.getElementById('stage');
+        if (!stage) return;
+
+        // 1. Name + Email Entry Gate
+        if (state.screen === 'entry') {
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <p class="text-xs uppercase tracking-widest text-accentSand mb-2">Last30</p>
+              <h1 class="font-serif text-3xl sm:text-4xl text-textPrimary font-normal mb-2">
+                One 30-minute directive before sleep.
+              </h1>
+              <p class="text-sm text-textSecondary mb-6">
+                Enter your name and email to save your profile and pacing memory locally.
+              </p>
+              <form id="entry-form" class="space-y-4">
+                <div>
+                  <label for="entry-name" class="block text-xs text-textSecondary mb-1.5">Name</label>
+                  <input id="entry-name" type="text" required value="${escapeHtml(state.draftName)}"
+                         placeholder="Your name"
+                         class="w-full rounded-xl bg-bgBase border border-borderWarm px-3.5 py-2.5 text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-accentSand" />
+                </div>
+                <div>
+                  <label for="entry-email" class="block text-xs text-textSecondary mb-1.5">Email</label>
+                  <input id="entry-email" type="email" required value="${escapeHtml(state.draftEmail)}"
+                         placeholder="you@example.com"
+                         class="w-full rounded-xl bg-bgBase border border-borderWarm px-3.5 py-2.5 text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-accentSand" />
+                </div>
+                <button type="submit"
+                        class="w-full py-3 rounded-xl bg-accentSand text-bgBase font-medium text-sm hover:opacity-95 transition-opacity">
+                  Continue
+                </button>
+              </form>
+            </div>
+          `;
+          const form = document.getElementById('entry-form');
+          if (form) {
+            form.addEventListener('submit', (e) => {
+              e.preventDefault();
+              const name = (document.getElementById('entry-name')?.value || '').trim();
+              const email = (document.getElementById('entry-email')?.value || '').trim();
+              if (!name || !email) return;
+
+              const existing = loadProfile();
+              if (existing && existing.email.toLowerCase() === email.toLowerCase()) {
+                state.profile = { ...existing, name, email };
+              } else {
+                state.profile = {
+                  name,
+                  email,
+                  defaultEnergy: 'Balanced',
+                  preferredFormats: ['Watch', 'Listen'],
+                  avoidNotes: '',
+                  onboarded: false,
+                  updatedAt: new Date().toISOString()
+                };
+              }
+              state.draftEnergy = state.profile.defaultEnergy;
+              state.draftFormats = [...state.profile.preferredFormats];
+              state.draftAvoid = state.profile.avoidNotes;
+              state.tonightEnergy = state.profile.defaultEnergy;
+              persistProfile();
+              state.screen = state.profile.onboarded ? 'checkin_1' : 'onboard_1';
+              renderStage();
+            });
+          }
+          return;
+        }
+
+        // 2. Step-by-step Onboarding Q1: Default Evening Energy (advances automatically)
+        if (state.screen === 'onboard_1') {
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <span>Setup · 1 of 3</span>
+                <span>${escapeHtml(state.profile.name)}</span>
+              </div>
+              <h1 class="font-serif text-3xl text-textPrimary font-normal mb-2">
+                What does a default evening feel like?
+              </h1>
+              <p class="text-sm text-textSecondary mb-6">
+                Tap one to set your baseline.
+              </p>
+              <div class="space-y-2.5">
+                ${ENERGY_LEVELS.map(lvl => {
+                  const selected = state.draftEnergy === lvl.id;
+                  return `
+                    <button type="button" onclick="Last30.selectOnboardEnergy('${lvl.id}')"
+                            class="w-full text-left p-4 rounded-xl border transition-colors flex items-center justify-between ${
+                              selected
+                                ? 'bg-bgHover border-accentSand'
+                                : 'bg-bgBase border-borderWarm hover:border-accentSand/60'
+                            }">
+                      <div>
+                        <div class="text-sm font-medium text-textPrimary">${escapeHtml(lvl.label)}</div>
+                        <div class="text-xs text-textSecondary mt-0.5">${escapeHtml(lvl.detail)}</div>
+                      </div>
+                      <span class="text-xs text-textMuted">→</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // 3. Step-by-step Onboarding Q2: Preferred Formats
+        if (state.screen === 'onboard_2') {
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <button type="button" onclick="Last30.go('onboard_1')" class="hover:text-textPrimary">← Back</button>
+                <span>Setup · 2 of 3</span>
+              </div>
+              <h1 class="font-serif text-3xl text-textPrimary font-normal mb-2">
+                Which formats fit you best?
+              </h1>
+              <p class="text-sm text-textSecondary mb-6">
+                Choose one or more.
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-6">
+                ${FORMAT_CHOICES.map(fmt => {
+                  const active = state.draftFormats.includes(fmt.id);
+                  return `
+                    <button type="button" onclick="Last30.toggleOnboardFormat('${fmt.id}')"
+                            class="text-left p-4 rounded-xl border transition-colors ${
+                              active
+                                ? 'bg-bgHover border-accentSand'
+                                : 'bg-bgBase border-borderWarm hover:border-accentSand/60'
+                            }">
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-textPrimary">${escapeHtml(fmt.label)}</span>
+                        <span class="text-xs ${active ? 'text-accentSand' : 'text-textMuted'}">${active ? 'Selected' : '+'}</span>
+                      </div>
+                      <div class="text-xs text-textSecondary mt-1">${escapeHtml(fmt.detail)}</div>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+              <button type="button" onclick="Last30.finishOnboardFormats()"
+                      class="w-full py-3 rounded-xl bg-accentSand text-bgBase font-medium text-sm hover:opacity-95 transition-opacity">
+                Next
+              </button>
+            </div>
+          `;
+          return;
+        }
+
+        // 4. Step-by-step Onboarding Q3: Anything to avoid (optional)
+        if (state.screen === 'onboard_3') {
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <button type="button" onclick="Last30.go('onboard_2')" class="hover:text-textPrimary">← Back</button>
+                <span>Setup · 3 of 3</span>
+              </div>
+              <h1 class="font-serif text-3xl text-textPrimary font-normal mb-2">
+                Anything to avoid?
+              </h1>
+              <p class="text-sm text-textSecondary mb-5">
+                Optional pacing or tone notes saved to your profile.
+              </p>
+              <input id="onboard-avoid" type="text" value="${escapeHtml(state.draftAvoid)}"
+                     placeholder="e.g., loud jump-cuts, heavy news, cliffhangers"
+                     class="w-full rounded-xl bg-bgBase border border-borderWarm px-3.5 py-2.5 text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-accentSand mb-5" />
+              <div class="flex items-center gap-2.5">
+                <button type="button" onclick="Last30.finishOnboarding(true)"
+                        class="flex-1 py-3 rounded-xl bg-bgBase border border-borderWarm text-xs sm:text-sm text-textSecondary hover:text-textPrimary">
+                  Skip
+                </button>
+                <button type="button" onclick="Last30.finishOnboarding(false)"
+                        class="flex-2 py-3 px-6 rounded-xl bg-accentSand text-bgBase font-medium text-xs sm:text-sm hover:opacity-95">
+                  Save & Start
+                </button>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // 5. Nightly Check-In Q1: Tonight's Energy (advances automatically)
+        if (state.screen === 'checkin_1') {
+          const prof = state.profile;
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <span>Tonight · 1 of 4</span>
+                <span>${escapeHtml(prof.name)} · ${escapeHtml(prof.email)}</span>
+              </div>
+              <h1 class="font-serif text-3xl text-textPrimary font-normal mb-2">
+                How is your head tonight?
+              </h1>
+              <p class="text-sm text-textSecondary mb-6">
+                Pick what matches right now.
+              </p>
+              <div class="space-y-2.5">
+                ${ENERGY_LEVELS.map(lvl => {
+                  const isBaseline = prof.defaultEnergy === lvl.id;
+                  return `
+                    <button type="button" onclick="Last30.selectCheckinEnergy('${lvl.id}')"
+                            class="w-full text-left p-4 rounded-xl bg-bgBase border border-borderWarm hover:border-accentSand/60 hover:bg-bgHover transition-colors flex items-center justify-between">
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm font-medium text-textPrimary">${escapeHtml(lvl.label)}</span>
+                          ${isBaseline ? `<span class="text-[11px] text-textMuted">Baseline</span>` : ''}
+                        </div>
+                        <div class="text-xs text-textSecondary mt-0.5">${escapeHtml(lvl.detail)}</div>
+                      </div>
+                      <span class="text-xs text-textMuted">→</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // 6. Nightly Check-In Q2: Format for tonight (advances automatically)
+        if (state.screen === 'checkin_2') {
+          const prof = state.profile;
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <button type="button" onclick="Last30.go('checkin_1')" class="hover:text-textPrimary">← Back</button>
+                <span>Tonight · 2 of 4 · ${escapeHtml(state.tonightEnergy)}</span>
+              </div>
+              <h1 class="font-serif text-3xl text-textPrimary font-normal mb-2">
+                What format fits tonight?
+              </h1>
+              <p class="text-sm text-textSecondary mb-6">
+                One tap narrows the lane.
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                ${FORMAT_CHOICES.map(fmt => {
+                  const isPref = prof.preferredFormats.includes(fmt.id);
+                  return `
+                    <button type="button" onclick="Last30.selectCheckinFormat('${fmt.id}')"
+                            class="text-left p-4 rounded-xl bg-bgBase border border-borderWarm hover:border-accentSand/60 hover:bg-bgHover transition-colors">
+                      <div class="flex items-center justify-between">
+                        <span class="font-serif text-xl text-textPrimary">${escapeHtml(fmt.label)}</span>
+                        ${isPref ? `<span class="text-[11px] text-textMuted">Preferred</span>` : ''}
+                      </div>
+                      <p class="text-xs text-textSecondary mt-1">${escapeHtml(fmt.detail)}</p>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // 7. Nightly Check-In Q3: Optional specific topic / thing they care about
+        if (state.screen === 'checkin_3') {
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <button type="button" onclick="Last30.go('checkin_2')" class="hover:text-textPrimary">← Back</button>
+                <span>Tonight · 3 of 4 · ${escapeHtml(state.tonightFormat)}</span>
+              </div>
+              <h1 class="font-serif text-3xl text-textPrimary font-normal mb-2">
+                Anything specific you care about right now?
+              </h1>
+              <p class="text-sm text-textSecondary mb-5">
+                Optional. Leave blank to let your mentor pick without prompting.
+              </p>
+
+              <input id="checkin-topic-input" type="text"
+                     value="${escapeHtml(state.tonightTopic)}"
+                     placeholder="e.g., jazz drumming, Roman architecture, calm sleep habits"
+                     class="w-full rounded-xl bg-bgBase border border-borderWarm px-3.5 py-2.5 text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-accentSand mb-3" />
+
+              <div class="flex flex-wrap gap-1.5 mb-6">
+                ${TOPIC_CHIPS.map(chip => `
+                  <button type="button" onclick="Last30.fillTopicChip('${escapeHtml(chip)}')"
+                          class="px-2.5 py-1 rounded-lg bg-bgBase border border-borderWarm hover:border-accentSand/60 text-xs text-textSecondary hover:text-textPrimary transition-colors">
+                    ${escapeHtml(chip)}
+                  </button>
+                `).join('')}
+              </div>
+
+              <div class="flex items-center gap-2.5">
+                <button type="button" onclick="Last30.advanceFromTopic(true)"
+                        class="flex-1 py-3 rounded-xl bg-bgBase border border-borderWarm text-xs sm:text-sm text-textSecondary hover:text-textPrimary">
+                  Skip
+                </button>
+                <button type="button" onclick="Last30.advanceFromTopic(false)"
+                        class="flex-2 py-3 px-6 rounded-xl bg-accentSand text-bgBase font-medium text-xs sm:text-sm hover:opacity-95">
+                  Next
+                </button>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // 8. Nightly Check-In Q4: Predictive single-word anchor (advances automatically)
+        if (state.screen === 'checkin_4') {
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <button type="button" onclick="Last30.go('checkin_3')" class="hover:text-textPrimary">← Back</button>
+                <span>Tonight · 4 of 4 · Predictive anchor</span>
+              </div>
+              <h1 class="font-serif text-3xl text-textPrimary font-normal mb-2">
+                Pick one word to predict your vibe.
+              </h1>
+              <p class="text-sm text-textSecondary mb-6">
+                Your mentor uses this single anchor to lock in one directive.
+              </p>
+
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                ${PREDICTIVE_ANCHORS.map(item => `
+                  <button type="button" onclick="Last30.selectAnchorAndGenerate('${escapeHtml(item.word)}')"
+                          class="text-left p-4 rounded-xl bg-bgBase border border-borderWarm hover:border-accentSand/60 hover:bg-bgHover transition-colors">
+                    <div class="font-serif text-xl text-textPrimary">${escapeHtml(item.word)}</div>
+                    <div class="text-xs text-textSecondary mt-0.5">${escapeHtml(item.hint)}</div>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // 9. Synthesizing state
+        if (state.screen === 'synthesizing') {
+          const firstName = state.profile.name.split(/\s+/)[0];
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-8 text-center">
+              <div class="w-2.5 h-2.5 rounded-full bg-accentSand mx-auto mb-4 animate-pulse"></div>
+              <h2 class="font-serif text-2xl text-textPrimary font-normal mb-1.5">
+                Picking one directive for ${escapeHtml(firstName)}…
+              </h2>
+              <p class="text-xs text-textSecondary">
+                ${escapeHtml(state.tonightEnergy)} · ${escapeHtml(state.tonightFormat)} · ${escapeHtml(state.tonightAnchor || 'Stillness')}
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        // 10. Single Directive Card
+        if (state.screen === 'directive' && state.directive) {
+          const d = state.directive;
+          const safeUrl = d.searchQuery ? buildSafeLaunchUrl(d.launchPlatform, d.searchQuery) : '';
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <span class="text-accentSand uppercase tracking-wider font-medium">Single Directive</span>
+                <button type="button" onclick="Last30.go('checkin_1')" class="hover:text-textPrimary">
+                  New check-in
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2 mb-3">
+                <span class="px-2.5 py-0.5 rounded-md bg-bgBase border border-borderWarm text-xs text-accentSand">${escapeHtml(d.formatBadge)}</span>
+                <span class="px-2.5 py-0.5 rounded-md bg-bgBase border border-borderWarm text-xs text-textSecondary">${escapeHtml(d.duration)}</span>
+                <span class="px-2.5 py-0.5 rounded-md bg-bgBase border border-borderWarm text-xs text-textMuted">${escapeHtml(d.launchPlatform)}</span>
+              </div>
+
+              <h1 class="font-serif text-2xl sm:text-3xl text-textPrimary font-normal mb-1">
+                ${escapeHtml(d.title)}
+              </h1>
+              <p class="text-xs sm:text-sm text-textSecondary mb-5">
+                ${escapeHtml(d.creatorOrSource)}
+              </p>
+
+              <!-- Mentor Rationale + Inline "Feels off" Button -->
+              <div class="rounded-xl bg-bgBase border border-borderWarm p-4 mb-5">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="text-xs font-medium text-accentSand">Why your mentor picked this</span>
+                  <button type="button" onclick="Last30.toggleFeelOff()"
+                          class="px-2.5 py-1 rounded-lg text-xs border transition-colors ${
+                            state.feelOffOpen
+                              ? 'bg-bgHover border-accentSand text-accentSand'
+                              : 'bg-bgCard border-borderWarm text-textSecondary hover:text-textPrimary hover:border-accentSand/50'
+                          }">
+                    Feels off
+                  </button>
+                </div>
+
+                ${state.feelOffOpen ? `
+                  <div class="fade-step mb-3 p-3 rounded-lg bg-bgCard border border-borderWarm">
+                    <p class="text-[11px] text-textSecondary mb-2">
+                      What felt off? Swapping immediately and saving to your profile memory.
+                    </p>
+                    <div class="flex flex-wrap gap-1.5">
+                      ${FEEL_OFF_REASONS.map(reason => `
+                        <button type="button" onclick="Last30.submitFeelOff('${escapeHtml(reason)}')"
+                                class="px-2.5 py-1 rounded-md bg-bgBase border border-borderWarm text-xs text-textPrimary hover:border-accentSand hover:text-accentSand transition-colors">
+                          ${escapeHtml(reason)}
+                        </button>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+
+                <p class="text-sm text-textPrimary leading-relaxed">
+                  ${escapeHtml(d.mentorNote)}
+                </p>
+
+                <div class="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-borderWarm/80">
+                  ${d.latentTags.map(tag => `
+                    <span class="text-[11px] px-2 py-0.5 rounded bg-bgCard border border-borderWarm text-textSecondary">
+                      ${escapeHtml(tag)}
+                    </span>
+                  `).join('')}
+                </div>
+              </div>
+
+              ${d.interactiveMode === 'brain_dump' ? `
+                <div class="rounded-xl bg-bgBase border border-borderWarm p-4 mb-5">
+                  <div class="text-xs text-accentSand mb-2">Quiet Offload</div>
+                  <ul class="space-y-1.5 text-xs text-textSecondary mb-3">
+                    ${d.interactivePrompts.map(p => `<li>• ${escapeHtml(p)}</li>`).join('')}
+                  </ul>
+                  <textarea rows="4" oninput="Last30.updateBrainDump(this.value)"
+                            placeholder="Write here. Stays in your browser."
+                            class="w-full rounded-lg bg-bgCard border border-borderWarm p-3 text-xs sm:text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-accentSand">${escapeHtml(state.brainDumpText)}</textarea>
+                </div>
+              ` : ''}
+
+              ${d.interactiveMode === 'puzzle' ? `
+                <div class="rounded-xl bg-bgBase border border-borderWarm p-4 mb-5">
+                  <div class="text-xs text-accentSand mb-1.5">Single Scenario</div>
+                  <p class="text-sm text-textPrimary mb-3">${escapeHtml(d.puzzlePrompt)}</p>
+                  ${state.puzzleRevealed ? `
+                    <div class="p-3 rounded-lg bg-bgCard border border-borderWarm text-xs text-textSecondary leading-relaxed">
+                      ${escapeHtml(d.puzzleSolution)}
+                    </div>
+                  ` : `
+                    <button type="button" onclick="Last30.revealPuzzle()"
+                            class="px-3 py-1.5 rounded-lg bg-bgCard border border-borderWarm text-xs text-textPrimary hover:border-accentSand">
+                      Reveal framing
+                    </button>
+                  `}
+                </div>
+              ` : ''}
+
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <button type="button" onclick="Last30.startSession()"
+                        class="flex-1 py-3 px-5 rounded-xl bg-accentSand text-bgBase font-medium text-sm hover:opacity-95 transition-opacity">
+                  Start 30-Min Session
+                </button>
+
+                ${safeUrl ? `
+                  <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer"
+                     class="py-3 px-4 rounded-xl bg-bgBase border border-borderWarm text-xs sm:text-sm text-textPrimary hover:border-accentSand/60 text-center">
+                    Search ${escapeHtml(d.launchPlatform)} ↗
+                  </a>
+                ` : ''}
+
+                <button type="button" ${state.rerollsRemaining <= 0 ? 'disabled' : ''}
+                        onclick="Last30.reroll()"
+                        class="py-3 px-4 rounded-xl bg-bgBase border border-borderWarm text-xs sm:text-sm ${
+                          state.rerollsRemaining > 0
+                            ? 'text-textPrimary hover:border-accentSand/60'
+                            : 'text-textMuted opacity-50 cursor-not-allowed'
+                        }">
+                  ${state.rerollsRemaining > 0 ? '1 Reroll Left' : 'Reroll Used'}
+                </button>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // 11. 30-Minute Session Timer
+        if (state.screen === 'session' && state.directive) {
+          const mm = String(Math.floor(state.secondsLeft / 60)).padStart(2, '0');
+          const ss = String(state.secondsLeft % 60).padStart(2, '0');
+          const loggedSoFar = Math.max(1, Math.round((1800 - state.secondsLeft) / 60));
+
+          stage.innerHTML = `
+            <div class="fade-step rounded-2xl bg-bgCard border border-borderWarm p-6 sm:p-8">
+              <div class="flex items-center justify-between text-xs text-textMuted mb-4">
+                <span class="text-accentSand uppercase tracking-wider font-medium">30-Minute Session</span>
+                <span>${escapeHtml(state.directive.formatBadge)}</span>
+              </div>
+
+              <h1 class="font-serif text-2xl sm:text-3xl text-textPrimary font-normal mb-1">
+                ${escapeHtml(state.directive.title)}
+              </h1>
+              <p class="text-xs text-textSecondary mb-6">
+                ${escapeHtml(state.directive.creatorOrSource)}
+              </p>
+
+              <div class="rounded-xl bg-bgBase border border-borderWarm p-6 text-center mb-6">
+                <div class="font-serif text-5xl text-textPrimary tabular-nums mb-2">${mm}:${ss}</div>
+                <p class="text-xs text-textSecondary">
+                  ${state.timerRunning ? 'In progress — stay with one thing.' : 'Paused'}
+                </p>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2.5">
+                <button type="button" onclick="Last30.toggleTimer()"
+                        class="px-4 py-2.5 rounded-xl bg-bgBase border border-borderWarm text-xs sm:text-sm text-textPrimary hover:border-accentSand/60">
+                  ${state.timerRunning ? 'Pause' : 'Resume'}
+                </button>
+                <button type="button" onclick="Last30.finishSession(${loggedSoFar})"
+                        class="flex-1 py-2.5 px-5 rounded-xl bg-accentSand text-bgBase font-medium text-xs sm:text-sm hover:opacity-95">
+                  Log ${loggedSoFar}m & Finish
+                </button>
+                <button type="button" onclick="Last30.go('directive')"
+                        class="px-4 py-2.5 rounded-xl bg-bgBase border border-borderWarm text-xs sm:text-sm text-textSecondary hover:text-textPrimary">
+                  Back
+                </button>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      function stopCountdown() {
+        clearInterval(countdownInterval);
+        state.timerRunning = false;
+      }
+
+      function startCountdown() {
+        stopCountdown();
+        state.timerRunning = true;
+        countdownInterval = setInterval(() => {
+          if (!state.timerRunning) return;
+          if (state.secondsLeft > 0) {
+            state.secondsLeft -= 1;
+            if (state.screen === 'session') {
+              renderStage();
+            }
+          } else {
+            stopCountdown();
+            finishSession(30);
+          }
+        }, 1000);
+      }
+
+      function finishSession(minutes) {
+        stopCountdown();
+        const mins = Math.max(1, Math.min(30, Number(minutes) || 30));
+        if (state.profile && state.directive) {
+          state.memory.completedMinutes += mins;
+          state.memory.sessionsCompleted += 1;
+          state.memory.history.unshift({
+            title: state.directive.title,
+            format: state.directive.formatBadge,
+            minutes: mins,
+            anchor: state.tonightAnchor || '',
+            at: new Date().toISOString()
+          });
+          state.memory.history = state.memory.history.slice(0, 30);
+          persistMemory();
+          showToast(`Logged ${mins}m (${state.memory.completedMinutes}/900m)`);
+        }
+        state.directive = null;
+        state.tonightFormat = null;
+        state.tonightTopic = '';
+        state.tonightAnchor = null;
+        state.screen = 'checkin_1';
+        renderStage();
+      }
+
+      function openLedger() {
+        const modal = document.getElementById('ledger-modal');
+        const content = document.getElementById('ledger-content');
+        if (!modal || !content || !state.profile) return;
+
+        const mins = state.memory.completedMinutes;
+        const pct = Math.min(100, Math.round((mins / MONTHLY_GOAL_MINUTES) * 100));
+
+        content.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between text-xs text-textSecondary mb-1.5">
+              <span>${escapeHtml(state.profile.name)} · ${escapeHtml(state.profile.email)}</span>
+              <span class="text-accentSand font-medium">${mins} / 900m</span>
+            </div>
+            <div class="w-full h-2.5 rounded-full bg-bgBase border border-borderWarm overflow-hidden">
+              <div class="h-full bg-accentSand transition-all" style="width: ${pct}%"></div>
+            </div>
+            <p class="text-xs text-textMuted mt-1.5">
+              ${state.memory.sessionsCompleted} sessions completed · ${pct}% of 900-minute monthly goal
+            </p>
+          </div>
+
+          <div class="rounded-xl bg-bgBase border border-borderWarm p-3.5 text-xs space-y-1 text-textSecondary">
+            <div class="text-textPrimary font-medium mb-1">Stored Personalization</div>
+            <div><span class="text-textMuted">Default energy:</span> ${escapeHtml(state.profile.defaultEnergy)}</div>
+            <div><span class="text-textMuted">Formats:</span> ${escapeHtml(state.profile.preferredFormats.join(', '))}</div>
+            <div><span class="text-textMuted">Avoid:</span> ${escapeHtml(state.profile.avoidNotes || 'None')}</div>
+            <div><span class="text-textMuted">Feedback notes:</span> ${state.memory.feedbackSignals.length} saved</div>
+          </div>
+
+          <div>
+            <div class="text-xs text-textSecondary mb-2">Recent Nights</div>
+            ${state.memory.history.length === 0
+              ? `<p class="text-xs text-textMuted">No sessions logged yet.</p>`
+              : `<div class="space-y-2">
+                  ${state.memory.history.slice(0, 8).map(item => `
+                    <div class="rounded-xl bg-bgBase border border-borderWarm p-3 flex items-center justify-between gap-2">
+                      <div>
+                        <div class="text-xs sm:text-sm text-textPrimary">${escapeHtml(item.title)}</div>
+                        <div class="text-[11px] text-textMuted">${escapeHtml(item.format)}${item.anchor ? ` · ${escapeHtml(item.anchor)}` : ''}</div>
+                      </div>
+                      <span class="text-xs text-accentSand">${item.minutes}m</span>
+                    </div>
+                  `).join('')}
+                </div>`
+            }
+          </div>
+
+          <div class="pt-2 border-t border-borderWarm flex justify-end">
+            <button type="button" onclick="Last30.resetAllData()"
+                    class="px-3 py-1.5 rounded-xl bg-bgBase border border-borderWarm text-xs text-textMuted hover:text-textPrimary">
+              Reset stored profile & memory
+            </button>
+          </div>
+        `;
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      function closeLedger() {
+        const modal = document.getElementById('ledger-modal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      async function requestDirective(rejectionReason = null) {
+        state.feelOffOpen = false;
+        state.puzzleRevealed = false;
+        state.screen = 'synthesizing';
+        renderStage();
+
+        const pick = await generateMentorDirective(rejectionReason);
+        state.directive = pick;
+        state.excludedTitles.push(pick.title);
+        state.screen = 'directive';
+        renderStage();
+      }
+
+      window.Last30 = {
+        goHome() {
+          stopCountdown();
+          if (!state.profile) {
+            state.screen = 'entry';
+          } else if (!state.profile.onboarded) {
+            state.screen = 'onboard_1';
+          } else {
+            state.screen = 'checkin_1';
+          }
+          renderStage();
+        },
+        go(screen) {
+          stopCountdown();
+          state.screen = screen;
+          renderStage();
+        },
+        selectOnboardEnergy(energy) {
+          state.draftEnergy = energy;
+          if (state.profile) {
+            state.profile.defaultEnergy = energy;
+            state.tonightEnergy = energy;
+            persistProfile();
+          }
+          state.screen = 'onboard_2';
+          renderStage();
+        },
+        toggleOnboardFormat(fmt) {
+          const idx = state.draftFormats.indexOf(fmt);
+          if (idx >= 0) {
+            if (state.draftFormats.length > 1) {
+              state.draftFormats.splice(idx, 1);
+            }
+          } else {
+            state.draftFormats.push(fmt);
+          }
+          renderStage();
+        },
+        finishOnboardFormats() {
+          if (state.profile) {
+            state.profile.preferredFormats = [...state.draftFormats];
+            persistProfile();
+          }
+          state.screen = 'onboard_3';
+          renderStage();
+        },
+        finishOnboarding(skipped) {
+          const inp = document.getElementById('onboard-avoid');
+          const avoidVal = skipped ? '' : (inp ? inp.value.trim() : state.draftAvoid);
+          state.draftAvoid = avoidVal;
+          if (state.profile) {
+            state.profile.avoidNotes = avoidVal;
+            state.profile.onboarded = true;
+            persistProfile();
+          }
+          state.screen = 'checkin_1';
+          renderStage();
+          showToast('Profile saved');
+        },
+        editProfile() {
+          stopCountdown();
+          if (!state.profile) return;
+          state.draftEnergy = state.profile.defaultEnergy;
+          state.draftFormats = [...state.profile.preferredFormats];
+          state.draftAvoid = state.profile.avoidNotes;
+          state.screen = 'onboard_1';
+          renderStage();
+        },
+        selectCheckinEnergy(energy) {
+          state.tonightEnergy = energy;
+          state.screen = 'checkin_2';
+          renderStage();
+        },
+        selectCheckinFormat(fmt) {
+          state.tonightFormat = fmt;
+          state.screen = 'checkin_3';
+          renderStage();
+        },
+        fillTopicChip(chip) {
+          const inp = document.getElementById('checkin-topic-input');
+          if (inp) {
+            inp.value = chip;
+          }
+          state.tonightTopic = chip;
+        },
+        advanceFromTopic(skipped) {
+          const inp = document.getElementById('checkin-topic-input');
+          const val = skipped ? '' : (inp ? inp.value.trim() : state.tonightTopic);
+          state.tonightTopic = val;
+          if (val) {
+            state.memory.recentTopics = [
+              val,
+              ...state.memory.recentTopics.filter(t => t !== val)
+            ].slice(0, 10);
+            persistMemory();
+          }
+          state.screen = 'checkin_4';
+          renderStage();
+        },
+        async selectAnchorAndGenerate(word) {
+          state.tonightAnchor = word;
+          state.rerollsRemaining = 1;
+          state.excludedTitles = [];
+          await requestDirective(null);
+        },
+        toggleFeelOff() {
+          state.feelOffOpen = !state.feelOffOpen;
+          renderStage();
+        },
+        async submitFeelOff(reason) {
+          if (state.profile && state.directive) {
+            state.memory.feedbackSignals.push({
+              title: state.directive.title,
+              reason,
+              anchor: state.tonightAnchor || '',
+              at: new Date().toISOString()
+            });
+            state.memory.feedbackSignals = state.memory.feedbackSignals.slice(-25);
+            persistMemory();
+          }
+          await requestDirective(reason);
+          showToast(`Swapped (${reason})`);
+        },
+        async reroll() {
+          if (state.rerollsRemaining <= 0) return;
+          state.rerollsRemaining = 0;
+          await requestDirective('Rerolled');
+        },
+        updateBrainDump(val) {
+          state.brainDumpText = val;
+        },
+        revealPuzzle() {
+          state.puzzleRevealed = true;
+          renderStage();
+        },
+        startSession() {
+          state.secondsLeft = 30 * 60;
+          state.screen = 'session';
+          startCountdown();
+          renderStage();
+        },
+        toggleTimer() {
+          if (state.timerRunning) {
+            stopCountdown();
+          } else {
+            startCountdown();
+          }
+          renderStage();
+        },
+        finishSession(mins) {
+          finishSession(mins);
+        },
+        openLedger,
+        closeLedger,
+        resetAllData() {
+          try {
+            localStorage.removeItem(PROFILE_KEY);
+            localStorage.removeItem(MEMORY_KEY);
+          } catch (e) {
+            // Ignore
+          }
+          stopCountdown();
+          closeLedger();
+          state.profile = null;
+          state.memory = {
+            completedMinutes: 0,
+            sessionsCompleted: 0,
+            history: [],
+            feedbackSignals: [],
+            recentTopics: []
+          };
+          state.draftName = '';
+          state.draftEmail = '';
+          state.directive = null;
+          state.screen = 'entry';
+          renderStage();
+          showToast('Stored profile and memory cleared');
+        }
+      };
+
+      renderStage();
+    })();
+  </script>
+</body>
+</html>
